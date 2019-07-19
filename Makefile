@@ -4,3 +4,6 @@ a.out: main.c
 .PHONY: run
 run: a.out
 	aprun -q ./a.out
+
+main.s:
+	gcc -S -mavx512f main.c
