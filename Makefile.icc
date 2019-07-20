@@ -1,0 +1,9 @@
+a.out: main.c
+	icc main.c -std=c99
+
+.PHONY: run
+run: a.out
+	aprun -q ./a.out
+
+main.s:
+	icc -S main.c

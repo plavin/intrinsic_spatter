@@ -4,7 +4,7 @@ This repo contains some toy Intel intrinsic code that is being used to test gath
 
 ## Building
 
-Compile the code with `make`. This will produce an executable named `a.out`. 
+First, rename either `Makefile.gcc` or `Makefile.icc` to `Makefile` depending on your platform. Then, compile the code with `make`. This will produce an executable named `a.out`. 
 
 ## Running
 
