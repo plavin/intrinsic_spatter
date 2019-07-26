@@ -1,9 +1,9 @@
 a.out: main.c sgtime.c
-	gcc -mavx512f main.c sgtime.c
+	gcc -mavx512f main.c sgtime.c  -O3
 
 .PHONY: run
 run: a.out
 	aprun -q ./a.out
 
-main.s:
-	gcc -S -mavx512f main.c
+main.s: main.c sgtime.c
+	gcc -S -masm=intel -mavx512f main.c -O3

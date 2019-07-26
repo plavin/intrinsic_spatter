@@ -39,7 +39,7 @@ double diff_ms(void)
 //Returns ms since zero time
 double sg_get_time_ms(void){
   //clock_gettime(CLOCK_PROCESS_CPUTIME_ID, &s);
-  asm volatile ("" : : : "memory");
+  //asm volatile ("" : : : "memory");
   clock_gettime(CLOCK_MONOTONIC, &endtime);
 
   //Print out for debugging

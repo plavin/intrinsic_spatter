@@ -14,6 +14,8 @@
 #define BLOCK 32
 
 void gather(int, double *src, __m512d *dst, __m512d *dst2, __m512d *dst3, __m512d *dst4, __m256i vindex);
+void gather_contig(int, double *src, __m512d *dst, __m512d *dst2, __m512d *dst3, __m512d *dst4);
+void gather_contig8(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst3, __m512d *dst4, __m512d *dst5, __m512d *dst6, __m512d *dst7, __m512d *dst8);
 void gather8(int _src_len, double *src, __m512d *dst, __m256i vindex);
 void gatherms1(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst3, __m512d *dst4,__m256i vindex);
 
@@ -73,14 +75,15 @@ double dgemm() {
 
 int main() {
 
-    int ms1_mode = 1;
-    int ntimes = 1000;
+    int ms1_mode = 0;
+    int contigload = 1;
+    int ntimes = 100083;
     int use8 = 0;
     //int src_len = 1<<29; //2**29 doubles == 4GB
     double *src;
     __m256i vindex; 
-    __m512d dst, dst2, dst3, dst4;
-    __m512d dst8[8];
+    __m512d dst, dst2, dst3, dst4, dst5, dst6, dst7, dst8;
+    //__m512d dst8[8];
     // Set vindex to read the first 8 elements of the bufer
     //vindex = _mm256_set_epi32(0, 1, 2, 3, 4, 5, 6, 7);
     if (ms1_mode) {
@@ -121,7 +124,10 @@ int main() {
             gatherms1(src_len, src, &dst, &dst2, &dst3, &dst4, vindex);
         } else {
             if (use8) {
-                gather8(src_len, src, dst8, vindex);
+                //gather8(src_len, src, dst8, vindex);
+                gather_contig8(src_len, src, &dst, &dst2, &dst3, &dst4, &dst5, &dst6, &dst7, &dst8);
+            } else if (contigload){
+                gather_contig(src_len, src, &dst, &dst2, &dst3, &dst4);
             } else {
                 gather(src_len, src, &dst, &dst2, &dst3, &dst4, vindex);
             }
@@ -129,12 +135,19 @@ int main() {
     }
     double time_ms = sg_get_time_ms()/ntimes;
     double time_s = time_ms / 1000;
-    
+
+    double cycles = time_s * 2.1 * 1000 * 1000 * 1000;
+    long bytes;
+
     if (ms1_mode) {
-        printf("BW(MB/s): %lf\n", ((double)src_len)*sizeof(double)/1000/1000/2 / time_s);
+        bytes = src_len*sizeof(double)/2;
     } else {
-        printf("BW(MB/s): %lf\n", ((double)src_len)*sizeof(double)/1000/1000 / time_s);
+        bytes = src_len*sizeof(double);
     }
+
+    double bpc = bytes / cycles;
+    
+    printf("BW(MB/s): %lf, Time(s) %.3e, %.1lf (B/cycle)\n",  ((double)bytes)/1000/1000/ time_s, time_s, bpc);
 
 
   double* f = (double*)&dst;
@@ -171,6 +184,35 @@ void gather(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst
         //*dst2 = _mm512_i32gather_pd(vindex, src+(i+1)*8, 8);
         //*dst3 = _mm512_i32gather_pd(vindex, src+(i+2)*8, 8);
         //*dst4 = _mm512_i32gather_pd(vindex, src+(i+3)*8, 8);
+        
+    }
+
+}
+
+void  __attribute__ ((noinline)) gather_contig(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst3, __m512d *dst4) 
+{
+    __assume_aligned(src, 4096);
+    for (int i = 0; i < src_len / 8; i+=4) {
+        *dst  = _mm512_load_pd(src+(i+0)*8);
+        *dst2 = _mm512_load_pd(src+(i+1)*8);
+        *dst3 = _mm512_load_pd(src+(i+2)*8);
+        *dst4 = _mm512_load_pd(src+(i+3)*8);
+    }
+
+}
+
+void  __attribute__ ((noinline)) gather_contig8(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst3, __m512d *dst4, __m512d *dst5, __m512d *dst6, __m512d *dst7, __m512d *dst8) 
+{
+    __assume_aligned(src, 4096);
+    for (int i = 0; i < src_len / 8; i+=8) {
+        *dst  = _mm512_load_pd(src+(i+0)*8);
+        *dst2 = _mm512_load_pd(src+(i+1)*8);
+        *dst3 = _mm512_load_pd(src+(i+2)*8);
+        *dst4 = _mm512_load_pd(src+(i+3)*8);
+        *dst5 = _mm512_load_pd(src+(i+4)*8);
+        *dst6 = _mm512_load_pd(src+(i+5)*8);
+        *dst7 = _mm512_load_pd(src+(i+6)*8);
+        *dst8 = _mm512_load_pd(src+(i+7)*8);
     }
 
 }
