@@ -8,4 +8,4 @@ First, rename either `Makefile.gcc` or `Makefile.icc` to `Makefile` depending on
 
 ## Running
 
-Run the code with `make run` on Cray compute nodes and `./a.out` otherwise.  
+Run the code with `make run` or `./runfreq <MHz>` on Cray compute nodes and `./a.out` otherwise.  
