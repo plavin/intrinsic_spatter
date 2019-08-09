@@ -4,14 +4,13 @@
 #include <assert.h>
 #include <omp.h>
 #include "sgtime.h"
+#include "dgemm.h"
 #ifdef __INTEL_COMPILER
 #include <malloc.h>
 #endif
 
 #define ALIGN 4096
 #define src_len (1<<14)
-#define DIM 1024l
-#define BLOCK 32
 
 void gather(int, double *src, __m512d *dst, __m512d *dst2, __m512d *dst3, __m512d *dst4, __m256i vindex);
 void gather_contig(int, double *src, __m512d *dst, __m512d *dst2, __m512d *dst3, __m512d *dst4);
@@ -32,48 +31,8 @@ void set256ms13(__m256i *index) {
     *index = _mm256_set_epi32(0, 8, 16, 24, 32, 40, 48, 56);
 }
 
-double dgemm() {
 
-    double *A = (double *)malloc(sizeof(double) * DIM * DIM); 
-    double *B = (double *)malloc(sizeof(double) * DIM * DIM); 
-    double *C = (double *)malloc(sizeof(double) * DIM * DIM); 
-    assert(A); assert(B); assert(C);
-
-    int rand1 = rand() % DIM;
-    int rand2 = rand() % DIM;
-
-    for (long i = 0; i < DIM * DIM; i++) {
-       A[i] = rand1;
-       B[i] = rand2;
-    }
-
-    
-    int en = BLOCK * (DIM / BLOCK);
-    for (int kk = 0; kk < en; kk += BLOCK) {
-        for (int jj = 0; jj < en; jj += BLOCK) {
-            for (int i = 0; i < DIM; i++) {
-               for (int j = jj; j < jj+BLOCK; j++) {
-                   double sum = C[i*DIM+j];
-                   for (int k = kk; k < kk+BLOCK; k++) {
-                        sum += A[i*DIM+k] * B[k*DIM+j];
-                   }
-                   C[i*DIM+j] = sum;
-               }
-            }
-        }
-    }
-
-    double ret = C[rand1*DIM + rand2];
-
-    free(A);
-    free(B);
-    free(C);
-    
-    return ret;
-
-}
-
-int main() {
+int main(int argc, char **argv) {
 
     int ms1_mode = 0;
     int contigload = 1;
@@ -83,6 +42,9 @@ int main() {
     double *src;
     __m256i vindex; 
     __m512d dst, dst2, dst3, dst4, dst5, dst6, dst7, dst8;
+#ifndef __INTEL_COMPILER
+    register __m512i z31 asm("zmm31") = _mm512_set1_epi32(123); 
+#endif
     //__m512d dst8[8];
     // Set vindex to read the first 8 elements of the bufer
     //vindex = _mm256_set_epi32(0, 1, 2, 3, 4, 5, 6, 7);
@@ -100,6 +62,14 @@ int main() {
 #endif
     assert(src);
 
+    int print_bpc = 0;
+    int mhz = 0;
+    if (argc == 2) {
+       print_bpc = 1;
+       mhz = atoi(argv[1]);
+    }
+
+
     for (int i = 0; i < src_len; i++) {
         src[i] = i;
     }
@@ -108,8 +78,7 @@ int main() {
         sg_zero_time();
         printf("Val: %lf\n", dgemm());
         double time_dgemm_s = sg_get_time_ms() / 1000;
-        long mflops = DIM*DIM*DIM*2 / 1000 / 1000;
-        printf("DGEMM: %lf seconds, %lf MFlops\n", time_dgemm_s, mflops/time_dgemm_s);
+        printf("DGEMM: %lf seconds, %lf MFlops\n", time_dgemm_s, dgemm_mflops(time_dgemm_s));
     }
     //cache warm
     if (ms1_mode) {
@@ -136,7 +105,7 @@ int main() {
     double time_ms = sg_get_time_ms()/ntimes;
     double time_s = time_ms / 1000;
 
-    double cycles = time_s * 2.1 * 1000 * 1000 * 1000;
+    double cycles = time_s * mhz * 1000 * 1000;
     long bytes;
 
     if (ms1_mode) {
@@ -145,9 +114,12 @@ int main() {
         bytes = src_len*sizeof(double);
     }
 
-    double bpc = bytes / cycles;
-    
-    printf("BW(MB/s): %lf, Time(s) %.3e, %.1lf (B/cycle)\n",  ((double)bytes)/1000/1000/ time_s, time_s, bpc);
+    if (print_bpc) {
+        double bpc = bytes / cycles;
+        printf("BW(MB/s): %lf, Time(s) %.3e, %.1lf (B/cycle)\n",  ((double)bytes)/1000/1000/ time_s, time_s, bpc);
+    } else {
+        printf("BW(MB/s): %lf, Time(s) %.3e\n",  ((double)bytes)/1000/1000/ time_s, time_s);
+    }
 
 
   double* f = (double*)&dst;
@@ -191,7 +163,9 @@ void gather(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst
 
 void  __attribute__ ((noinline)) gather_contig(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst3, __m512d *dst4) 
 {
+#ifdef __INTEL_COMPILER
     __assume_aligned(src, 4096);
+#endif
     for (int i = 0; i < src_len / 8; i+=4) {
         *dst  = _mm512_load_pd(src+(i+0)*8);
         *dst2 = _mm512_load_pd(src+(i+1)*8);
@@ -203,7 +177,9 @@ void  __attribute__ ((noinline)) gather_contig(int _src_len, double *src, __m512
 
 void  __attribute__ ((noinline)) gather_contig8(int _src_len, double *src, __m512d *dst,__m512d *dst2,  __m512d *dst3, __m512d *dst4, __m512d *dst5, __m512d *dst6, __m512d *dst7, __m512d *dst8) 
 {
+#ifdef __INTEL_COMPILER
     __assume_aligned(src, 4096);
+#endif
     for (int i = 0; i < src_len / 8; i+=8) {
         *dst  = _mm512_load_pd(src+(i+0)*8);
         *dst2 = _mm512_load_pd(src+(i+1)*8);

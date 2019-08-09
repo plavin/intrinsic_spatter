@@ -1,12 +1,12 @@
 a.out: main.c sgtime.c
-	icc main.c sgtime.c -std=c99 -qopenmp -O3  -march=skylake-avx512 -Ofast -fargument-noalias
+	icc main.c sgtime.c -std=c99 -qopenmp -O3  -march=skylake-avx512 -fargument-noalias
 
 .PHONY: run clean
 run: a.out
 	aprun -q ./a.out
 
 main.s: main.c sgtime.c
-	icc -S -std=c99 -qopenmp -march=skylake-avx512 main.c -Os
+	icc -S -std=c99 -qopenmp -march=skylake-avx512 main.c -O3
 
 clean:
 	rm -f a.out
